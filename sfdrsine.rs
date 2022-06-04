@@ -2,6 +2,9 @@
 
 use std::f64::consts::TAU;
 
+use rayon::prelude::*;
+use ordered_float::OrderedFloat;
+
 /// Calculate the SFDR of the given `samples` in dB relative
 /// to a sine wave at frequency 1/16 with the given `gain` and
 /// `phase` (in radians).
@@ -45,26 +48,27 @@ fn main() {
     // phases. Question: Is there a theorem that says that
     // the phase should be 0? It certainly appears that way
     // in practice.
-    let mut min_sine = None;
     let gain_steps = 4096 * 256;
     let phase_steps = 256;
-    for gi in 0..=gain_steps {
-        let gain = 4096.0 + 4096.0 * gi as f64 / gain_steps as f64;
-        for pi in 0..phase_steps {
-            let phase = TAU / 32.0 * pi as f64 / phase_steps as f64;
+    let xs = (0..=gain_steps)
+        .into_par_iter()
+        .flat_map(move |gi| {
+            let gain = 4096.0 + 4096.0 * gi as f64 / gain_steps as f64;
+            (0..phase_steps)
+                .into_par_iter()
+                .map(move |pi| {
+                    let phase = TAU / 32.0 * pi as f64 / phase_steps as f64;
+                    (gain, phase)
+                })
+        });
+    let (sine_sfdr, sine, gain, phase) = xs
+        .map(|(gain, phase)| {
             let sine = gen_sine(gain, phase);
             let sine_sfdr = sfdr(&sine, gain, phase);
-            let replace = match min_sine {
-                None => true,
-                Some((m, _, _, _)) if m > sine_sfdr => true,
-                _ => false,
-            };
-            if replace {
-                min_sine = Some((sine_sfdr, sine, gain, phase));
-            }
-        }
-    }
-    let (sine_sfdr, sine, gain, phase) = min_sine.unwrap();
+            (sine_sfdr, sine, gain, phase)
+        })
+        .min_by_key(|&(sine_sfdr, _, _, _)| OrderedFloat(sine_sfdr))
+        .unwrap();
     println!("{sine_sfdr}, {gain}, {phase}");
     println!("{:#?}", sine);
 }

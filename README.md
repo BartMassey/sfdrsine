@@ -13,4 +13,4 @@ Reddit post:
 
 with -103.39690314160477 dB SFDR relative to a sine wave
 with amplitude 8119.0078125 and 0 phase. It runs in about
-57s on my box.
+4.3s on my 12-core box.
